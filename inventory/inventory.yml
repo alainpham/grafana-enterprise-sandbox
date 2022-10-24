@@ -10,5 +10,5 @@ all:
 # to run it on localhost
 # all:
 #   hosts:
-#     sandbox.lan:
+#     localhost:
 #       ansible_connection: local
