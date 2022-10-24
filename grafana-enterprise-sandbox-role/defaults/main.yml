@@ -1,0 +1,82 @@
+---
+
+config_folder_root: /home/{{ ansible_user }}/apps/
+data_folder_root: /home/{{ ansible_user }}/apps/
+
+global_appstate: started
+global_recreate: true
+
+docker_network_name: grafana
+
+appconfig:
+
+  minio:
+    # ######################################## 
+    # ### common variables to all services ###
+    # ########################################
+
+    # appstate can be started or absent
+    appstate: "{{ global_appstate }}"
+    recreate: "{{ global_recreate }}"
+
+    # image: minio/minio:RELEASE.2022-10-20T00-55-09Z
+    image: registry.work.lan/minio:RELEASE.2022-10-20T00-55-09Z
+    exec_as_user: 1000
+    exec_as_group: 1000
+    config_folder: /home/{{ ansible_user }}/apps/{{ appname }}/config
+    data_folder: /home/{{ ansible_user }}/apps/{{ appname }}/data
+
+    # ############################
+    # ### specific to solution ###
+    # ############################
+    minio_root_user: admin
+    minio_root_password: password
+    buckets:
+      - /data/gem-tsdb 
+      - /data/gem-ruler 
+      - /data/gem-admin
+
+  ge:
+    # ######################################## 
+    # ### common variables to all services ###
+    # ########################################
+
+    # appstate can be started or absent
+    appstate: "{{ global_appstate }}"
+    recreate: "{{ global_recreate }}"
+
+    # image: grafana/grafana-enterprise:9.2.1
+    image: registry.work.lan/grafana-enterprise:9.2.1
+    exec_as_user: 1000
+    exec_as_group: 1000
+    config_folder: /home/{{ ansible_user }}/apps/{{ appname }}/config
+    data_folder: /home/{{ ansible_user }}/apps/{{ appname }}/data
+
+    # ############################
+    # ### specific to solution ###
+    # ############################
+    gf_server_root_url: http://sandbox.lan:3000/
+    gf_security_admin_user: admin
+    gf_security_admin_password: password
+
+  gem:
+    # ######################################## 
+    # ### common variables to all services ###
+    # ########################################
+
+    # appstate can be started or absent
+    appstate: "{{ global_appstate }}"
+    recreate: "{{ global_recreate }}"
+
+    # image: grafana/enterprise-metrics:v2.3.0
+    image: registry.work.lan/enterprise-metrics:v2.3.0
+    exec_as_user: 1000
+    exec_as_group: 1000
+    config_folder: /home/{{ ansible_user }}/apps/{{ appname }}/config
+    data_folder: /home/{{ ansible_user }}/apps/{{ appname }}/data
+
+    # ############################
+    # ### specific to solution ###
+    # ############################
+
+    # tweak file for tuning grafana-enterprise-sandbox-role/templates/gem/config/config.yml

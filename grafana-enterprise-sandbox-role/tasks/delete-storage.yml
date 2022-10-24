@@ -1,0 +1,14 @@
+---
+- name: Delete {{appname}} config folder
+  when: appconfig[appname].appstate == 'absent'
+  become: true
+  file:
+    path: "{{ appconfig[appname].config_folder }}"
+    state: absent
+
+- name: Delete {{appname}} data folder
+  when: appconfig[appname].appstate == 'absent'
+  become: true
+  file:
+    path: "{{ appconfig[appname].data_folder }}"
+    state: absent

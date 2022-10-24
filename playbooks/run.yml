@@ -1,0 +1,17 @@
+---
+- name: start-services
+  hosts:
+    - all
+  tasks:
+    - include_role:
+        name: grafana-enterprise-sandbox-role
+        tasks_from: network
+    - include_role:
+        name: grafana-enterprise-sandbox-role
+        tasks_from: app-{{ rolesvar }}
+      loop:
+        # - minio
+        # - ge
+        - gem
+      loop_control:
+        loop_var: rolesvar

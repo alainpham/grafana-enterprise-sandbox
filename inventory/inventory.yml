@@ -1,0 +1,14 @@
+---
+all:
+  hosts:
+    sandbox.lan:
+      ansible_connection: ssh
+      ansible_user: cloud-user
+      ansible_python_interpreter: /usr/bin/python3
+      arch: linux-amd64
+
+# to run it on localhost
+# all:
+#   hosts:
+#     sandbox.lan:
+#       ansible_connection: local

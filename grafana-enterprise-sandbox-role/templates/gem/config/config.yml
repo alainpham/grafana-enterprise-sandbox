@@ -1,0 +1,52 @@
+cluster_name: gem-pov
+
+auth:
+  type: enterprise
+
+license:
+  path: /cfg/license/gem.jwt
+
+admin_api:
+  leader_election:
+    enabled: true
+    ring:
+      kvstore:
+        store: memberlist
+
+admin_client:
+  storage:
+    backend: s3
+    s3:
+      endpoint: minio:9000
+      bucket_name: gem-admin
+      access_key_id: admin
+      secret_access_key: password
+      insecure: true
+
+ingester:
+  ring:
+    replication_factor: 1
+
+blocks_storage:
+  backend: s3
+  s3:
+    endpoint: minio:9000
+    bucket_name: gem-tsdb
+    access_key_id: admin
+    secret_access_key: password
+    insecure: true
+  tsdb:
+    dir: /data/tsdb
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+
+memberlist:
+  join_members: [ gem ]
+
+limits:
+  cardinality_analysis_enabled: true
+
+server:
+  log_level: info
+  http_listen_port: 8080
+

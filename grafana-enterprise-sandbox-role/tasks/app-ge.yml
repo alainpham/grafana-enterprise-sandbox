@@ -1,0 +1,57 @@
+---
+- set_fact:
+    appname: ge
+
+- name: provision storage
+  ansible.builtin.include_role:
+    name: grafana-enterprise-sandbox-role
+    tasks_from: provision-storage
+
+- name: "Manage {{appname}} container state - {{appconfig[appname].appstate}}"
+  docker_container:
+    name: "{{appname}}"
+    hostname: "{{appname}}"
+    image: "{{ appconfig[appname].image }}"
+    state: "{{ appconfig[appname].appstate }}"
+    recreate: "{{ appconfig[appname].recreate }}"
+    restart_policy: unless-stopped
+    container_default_behavior: no_defaults
+    detach: true
+    user: "{{ appconfig[appname].exec_as_user }}:{{ appconfig[appname].exec_as_group }}"
+    entrypoint: 
+    command:
+    env:
+      GF_SERVER_ROOT_URL: "{{ appconfig[appname].gf_server_root_url}}"
+      GF_ENTERPRISE_LICENSE_PATH: "/cfg/license/ge.jwt"
+      GF_AUTH_BASIC_ENABLED: "true"
+      GF_SECURITY_ADMIN_USER: "{{ appconfig[appname].gf_security_admin_user}}"
+      GF_SECURITY_ADMIN_PASSWORD: "{{ appconfig[appname].gf_security_admin_password}}"
+      GF_PATHS_DATA: "/data"
+      GF_PATHS_LOGS: "/data/log"
+      GF_PATHS_PLUGINS: "/data/plugins"
+      GF_PATHS_PROVISIONING: "/cfg/provisioning"
+    ports:
+      - 3000:3000
+    labels: 
+    volumes:
+      - "{{  appconfig[appname].config_folder }}:/cfg:ro"
+      - "{{  appconfig[appname].data_folder }}:/data:rw"
+    networks_cli_compatible: yes
+    network_mode: "{{ docker_network_name }}"
+
+- name: Helth check
+  when: appconfig[appname].appstate == 'started'
+  uri:
+    url: "http://{{ inventory_hostname }}:3000/api/health"
+    method: GET
+    status_code: 200
+  register: result
+  until: result.status == 200
+  retries: 60
+  delay: 2
+
+
+- name: delete storage
+  ansible.builtin.include_role:
+    name: grafana-enterprise-sandbox-role
+    tasks_from: delete-storage
