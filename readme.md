@@ -8,3 +8,8 @@
    - `grafana-enterprise-sandbox-role/templates/get/license/get.jwt`
 3. Review variables files
    - `grafana-enterprise-sandbox-role/defaults/main.yml`
+4. Run script
+   - `ansible-playbook playbooks/run.yml`
+
+
+WIP : GEL, GET deployment
