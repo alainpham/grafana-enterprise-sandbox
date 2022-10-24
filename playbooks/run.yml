@@ -10,8 +10,10 @@
         name: grafana-enterprise-sandbox-role
         tasks_from: app-{{ rolesvar }}
       loop:
-        # - minio
-        # - ge
+        - minio
+        - ge
         - gem
+        # - gel
+        # - get
       loop_control:
         loop_var: rolesvar
