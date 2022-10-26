@@ -35,6 +35,8 @@ appconfig:
       - /data/gem-tsdb 
       - /data/gem-ruler 
       - /data/gem-admin
+      - /data/gel-admin
+      - /data/gel-chunks
 
   ge:
     # ######################################## 
@@ -70,6 +72,28 @@ appconfig:
 
     # image: grafana/enterprise-metrics:v2.3.0
     image: registry.work.lan/enterprise-metrics:v2.3.0
+    exec_as_user: 1000
+    exec_as_group: 1000
+    config_folder: /home/{{ ansible_user }}/apps/{{ appname }}/config
+    data_folder: /home/{{ ansible_user }}/apps/{{ appname }}/data
+
+    # ############################
+    # ### specific to solution ###
+    # ############################
+
+    # tweak file for tuning grafana-enterprise-sandbox-role/templates/gem/config/config.yml
+
+  gel:
+    # ######################################## 
+    # ### common variables to all services ###
+    # ########################################
+
+    # appstate can be started or absent
+    appstate: "{{ global_appstate }}"
+    recreate: "{{ global_recreate }}"
+
+    # image: grafana/enterprise-logs:v1.5.2
+    image: registry.work.lan/enterprise-logs:v1.5.2
     exec_as_user: 1000
     exec_as_group: 1000
     config_folder: /home/{{ ansible_user }}/apps/{{ appname }}/config

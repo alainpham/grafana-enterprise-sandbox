@@ -11,9 +11,9 @@
         tasks_from: app-{{ rolesvar }}
       loop:
         - minio
-        - ge
-        - gem
-        # - gel
+        # - ge
+        # - gem
+        - gel
         # - get
       loop_control:
         loop_var: rolesvar

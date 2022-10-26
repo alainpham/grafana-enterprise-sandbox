@@ -1,0 +1,265 @@
+---
+- set_fact:
+    appname: gel
+
+- name: provision storage
+  ansible.builtin.include_role:
+    name: grafana-enterprise-sandbox-role
+    tasks_from: provision-storage
+
+- name: "Manage {{appname}} container state - {{appconfig[appname].appstate}}"
+  docker_container:
+    name: "{{appname}}"
+    hostname: "{{appname}}"
+    image: "{{ appconfig[appname].image }}"
+    state: "{{ appconfig[appname].appstate }}"
+    recreate: "{{ appconfig[appname].recreate }}"
+    restart_policy: unless-stopped
+    container_default_behavior: no_defaults
+    detach: true
+    user: "{{ appconfig[appname].exec_as_user }}:{{ appconfig[appname].exec_as_group }}"
+    entrypoint: 
+    command: -config.file=/cfg/config.yml --target=all
+    env:
+    ports:
+      - 3100:3100
+    labels: 
+    volumes:
+      - "{{ appconfig[appname].config_folder }}:/cfg:ro"
+      - "{{ appconfig[appname].data_folder }}:/data:rw"
+    networks_cli_compatible: yes
+    network_mode: "{{ docker_network_name }}"
+
+- name: Helth check
+  when: appconfig[appname].appstate == 'started'
+  uri:
+    url: "http://{{ inventory_hostname }}:3100/ready"
+    method: GET
+    status_code: 200
+  register: result
+  until: result.status == 200
+  retries: 100
+  delay: 2
+
+- name: Create gem admin token
+  shell: |
+    if [[ -f "{{ appconfig[appname].data_folder }}/gem-admin-token.txt" ]]; 
+    then
+      echo "{{ appconfig[appname].data_folder }}/gem-admin-token.txt exists."
+    else 
+      docker exec {{ appname }} /usr/bin/enterprise-metrics -config.file=/cfg/config.yml --target=tokengen --tokengen.token-file=/data/gem-admin-token.txt
+    fi
+  args:
+    creates: "{{ appconfig[appname].data_folder }}/gem-admin-token.txt"
+
+
+- name: read the gem admin token
+  shell: cat {{ appconfig[appname].data_folder }}/gem-admin-token.txt
+  register: gem_admin_token
+  changed_when: no
+
+- name: read the cluster name
+  uri:
+    url: http://{{ inventory_hostname }}:7080/admin/api/v3/clusters
+    force_basic_auth: yes
+    url_username: admin  # Can be empty, but then Ansible wouldn't send credentials.
+    url_password: '{{ gem_admin_token.stdout }}'
+  register: clusters
+  changed_when: no
+
+- name: create a tenant 
+  uri:
+    url: http://{{ inventory_hostname }}:7080/admin/api/v3/tenants
+    force_basic_auth: yes
+    url_username: admin  # Can be empty, but then Ansible wouldn't send credentials.
+    url_password: '{{ gem_admin_token.stdout }}'
+    method: POST
+    body_format: json
+    body:
+      name: tenant-01
+      display_name: Tenant 01
+      cluster: '{{ clusters.json["items"][0].name }}'
+    status_code:
+      - 200
+      - 409  # Conflict, already exists
+  register: create_tenant
+  changed_when: create_tenant.status == 200
+
+
+- name: create the read access policy
+  uri:
+    url: http://{{ inventory_hostname }}:7080/admin/api/v3/accesspolicies
+    force_basic_auth: yes
+    url_username: admin  # Can be empty, but then Ansible wouldn't send credentials.
+    url_password: '{{ gem_admin_token.stdout }}'
+    method: POST
+    body_format: json
+    body:
+      name: tenant-01-reader
+      display_name: Tenant 01 reader
+      realms:
+        - cluster: '{{ clusters.json["items"][0].name }}'
+          tenant: tenant-01
+      scopes:
+        - metrics:read
+        - rules:read
+        - alerts:read
+        - rules:write
+        - alerts:write
+    status_code:
+      - 200
+      - 409  # Conflict, already exists
+  register: create_read_access_policy
+  changed_when: create_read_access_policy.status == 200
+
+- name: create the read token for Grafana
+  uri:
+    url: http://{{ inventory_hostname }}:7080/admin/api/v3/tokens
+    force_basic_auth: yes
+    url_username: admin  # Can be empty, but then Ansible wouldn't send credentials.
+    url_password: '{{ gem_admin_token.stdout }}'
+    method: POST
+    body_format: json
+    body:
+      name: grafana-data-source
+      display_name: Grafana data source
+      access_policy: tenant-01-reader
+    status_code:
+      - 200
+      - 409  # Conflict, already exists
+  register: create_read_token
+  changed_when: create_read_token.status == 200
+
+- name: save the read token
+  copy:
+    dest: "{{ appconfig[appname].data_folder }}/gem-tenant-01-grafana-data-source-token.txt"
+    content: '{{ create_read_token.json.token }}'
+  when: create_read_token.status == 200
+
+- name: create the write access policy
+  uri:
+    url: http://{{ inventory_hostname }}:7080/admin/api/v3/accesspolicies
+    force_basic_auth: yes
+    url_username: admin  # Can be empty, but then Ansible wouldn't send credentials.
+    url_password: '{{ gem_admin_token.stdout }}'
+    method: POST
+    body_format: json
+    body:
+      name: tenant-01-writer
+      display_name: Tenant 01 writer
+      realms:
+        - cluster: '{{ clusters.json["items"][0].name }}'
+          tenant: tenant-01
+      scopes:
+        - metrics:write
+        - rules:write
+        - alerts:write
+    status_code:
+      - 200
+      - 409  # Conflict, already exists
+  register: create_write_access_policy
+  changed_when: create_write_access_policy.status == 200
+
+- name: create the write token for Grafana Agent
+  uri:
+    url: http://{{ inventory_hostname }}:7080/admin/api/v3/tokens
+    force_basic_auth: yes
+    url_username: admin  # Can be empty, but then Ansible wouldn't send credentials.
+    url_password: '{{ gem_admin_token.stdout }}'
+    method: POST
+    body_format: json
+    body:
+      name: grafana-agent-remote-write
+      display_name: Grafana Agent remote_write
+      access_policy: tenant-01-writer
+    status_code:
+      - 200
+      - 409  # Conflict, already exists
+  register: create_write_token
+  changed_when: create_write_token.status == 200
+
+- name: save the write token
+  copy:
+    dest: "{{ appconfig[appname].data_folder }}/gem-tenant-01-grafana-agent-remote-write-token.txt"
+    content: '{{ create_write_token.json.token }}'
+  when: create_write_token.status == 200
+
+- name: create the write token for GEL
+  uri:
+    url: http://{{ inventory_hostname }}:7080/admin/api/v3/tokens
+    force_basic_auth: yes
+    url_username: admin  # Can be empty, but then Ansible wouldn't send credentials.
+    url_password: '{{ gem_admin_token.stdout }}'
+    method: POST
+    body_format: json
+    body:
+      name: gel-remote-write
+      display_name: GEL remote_write
+      access_policy: tenant-01-writer
+    status_code:
+      - 200
+      - 409  # Conflict, already exists
+  register: create_write_token
+  changed_when: create_write_token.status == 200
+
+- name: save the write token
+  copy:
+    dest: "{{ appconfig[appname].data_folder }}/gem-tenant-01-gel-remote-write-token.txt"
+    content: '{{ create_write_token.json.token }}'
+  when: create_write_token.status == 200
+
+- name: create the mimirtool access policy
+  uri:
+    url: http://{{ inventory_hostname }}:7080/admin/api/v3/accesspolicies
+    force_basic_auth: yes
+    url_username: admin  # Can be empty, but then Ansible wouldn't send credentials.
+    url_password: '{{ gem_admin_token.stdout }}'
+    method: POST
+    body_format: json
+    body:
+      name: tenant-01-mimirtool
+      display_name: Tenant 01 mimirtool
+      realms:
+        - cluster: '{{ clusters.json["items"][0].name }}'
+          tenant: tenant-01
+      scopes:
+        - metrics:write
+        - rules:write
+        - alerts:write
+        - metrics:read
+        - rules:read
+        - alerts:read
+    status_code:
+      - 200
+      - 409  # Conflict, already exists
+  register: create_mimirtool_access_policy
+  changed_when: create_mimirtool_access_policy.status == 200
+
+- name: create the mimirtool token for Grafana Agent
+  uri:
+    url: http://{{ inventory_hostname }}:7080/admin/api/v3/tokens
+    force_basic_auth: yes
+    url_username: admin  # Can be empty, but then Ansible wouldn't send credentials.
+    url_password: '{{ gem_admin_token.stdout }}'
+    method: POST
+    body_format: json
+    body:
+      name: mimirtool
+      display_name: Mimirtool
+      access_policy: tenant-01-mimirtool
+    status_code:
+      - 200
+      - 409  # Conflict, already exists
+  register: create_mimirtool_token
+  changed_when: create_mimirtool_token.status == 200
+
+- name: save the mimirtool token
+  copy:
+    dest: "{{ appconfig[appname].data_folder }}/gem-tenant-01-mimirtool-token.txt"
+    content: '{{ create_mimirtool_token.json.token }}'
+  when: create_mimirtool_token.status == 200
+
+- name: delete storage
+  ansible.builtin.include_role:
+    name: grafana-enterprise-sandbox-role
+    tasks_from: delete-storage
